@@ -82,6 +82,7 @@ def setEnvironment_FOG(n_Nodes = 5, range_Distance = ((0, 50), (0, 50)), range_V
     nodesFOG['X'] = np.random.uniform(rangeX[0], rangeX[1], n_Nodes).round(2)
     nodesFOG['Y'] = np.random.uniform(rangeY[0], rangeY[0], n_Nodes).round(2)
     nodesFOG['POWER'] = np.random.uniform(0.5, 1, n_Nodes).round(2)
+    nodesFOG['TOTAL_MEMORY'] = np.random.randint(1, 10, n_Nodes)
     nodesFOG['N_VMS'] = np.random.randint(min_VMS_perES, max_VMS_perES, n_Nodes)
 
 
@@ -98,7 +99,8 @@ def setEnvironment_FOG(n_Nodes = 5, range_Distance = ((0, 50), (0, 50)), range_V
                                                     'VM_CPU': randVM['CPU'],
                                                     'VM_POWER_CAPACITY_PER_CPU': randVM['MIPS_pCPU'],
                                                     'VM_BANDWITH': randVM['BANDWITH']}, index=[0])])
-        
+    nodesFOG = nodesFOG.merge(nodesVMs.groupby('NODE_ID')['VM_POWER_CAPACITY'].sum().reset_index(name='TOTAL_POWER_CAPACITY'), on='NODE_ID')
+
     # Save both DATAFRAME as a CSV File
     pathData = 'data/FOG'
     os.makedirs(pathData, exist_ok=True)
@@ -159,7 +161,8 @@ def setEnvironment_CLOUD(n_Nodes = 2, range_Distance = ((100, 500), (100, 500)),
                                                     'VM_CPU': randVM['CPU'],
                                                     'VM_POWER_CAPACITY_PER_CPU': randVM['MIPS_pCPU'],
                                                     'VM_BANDWITH': randVM['BANDWITH']}, index=[0])])
-        
+    nodesCLOUD = nodesCLOUD.merge(nodesVMs.groupby('NODE_ID')['VM_POWER_CAPACITY'].sum().reset_index(name='TOTAL_POWER_CAPACITY'), on='NODE_ID')
+
     # Save both DATAFRAME as a CSV File
     pathData = 'data/CLOUD'
     os.makedirs(pathData, exist_ok=True)
