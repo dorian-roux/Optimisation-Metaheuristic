@@ -104,7 +104,7 @@ def compute_CLOUD_BestLatency(TaskInfo, baseVMS):
             saveIndex = C_INDEX
             bestLatency = (QTime + PgtTime + TrmsnTime)
             saveTrmsnTime = TrmsnTime
-    return baseVMS.iloc[saveIndex], bestLatency, saveTrmsnTime
+    return baseCLOUD_VMS.iloc[saveIndex], bestLatency, saveTrmsnTime
 
 
 # -- Compute CLOUD Energy Consumption
