@@ -183,7 +183,7 @@ def prepareOffloading_V1(n_IoTs = 20, FOG_nNodes = 5, CLOUD_nNodes = 2, IoT_rDis
         
         
 # -- Prepare Offloading - V2
-def prepareOffloading_V2(n_IoTs = 20, FOG_nNodes = 5, CLOUD_nNodes = 2, IoT_rDist=((0,50), (0,50)), FOG_rDist = ((0,50), (0,50)), CLOUD_rDist = ((100, 500), (100, 500)), FOG_rVMS = (2, 6), CLOUD_rVMS = (1,3)):
+def prepareOffloading_V2(n_IoTs = 20, FOG_nNodes = 5, CLOUD_nNodes = 2, IoT_rDist=((0,50), (0,50)), FOG_rDist = ((0,50), (0,50)), CLOUD_rDist = ((100, 500), (100, 500)), FOG_rVMS = (2, 6), CLOUD_rVMS = (1,3), saveInformation=False):
     taskVM, taskVM_Dummy = pd.DataFrame(), pd.DataFrame()
     
     baseVMS = setBaseVMS(FOG_nNodes, CLOUD_nNodes, FOG_rDist, CLOUD_rDist, FOG_rVMS, CLOUD_rVMS)
@@ -254,19 +254,19 @@ def prepareOffloading_V2(n_IoTs = 20, FOG_nNodes = 5, CLOUD_nNodes = 2, IoT_rDis
     taskVM_Transp = taskVM_Transp.reset_index()
     taskVM_Transp = taskVM_Transp.rename(columns={'index':'TASK', 0:'VM', 1:'F1', 2:'F2'})
 
-
-    # Save DATAFRAMES as CSV Files
-    pathData = 'data/GENERATIONS'
-    os.makedirs(pathData, exist_ok=True)
-    lsFolders = os.listdir(pathData)
-    folderGen = f'Generation_{int(max(list(map(lambda folderN : int(folderN.split("_")[1]), lsFolders)))) + 1}' if lsFolders else 'Generation_1'
-    os.makedirs(os.path.join(pathData, folderGen), exist_ok=True)
-    
-    print(f'Data are stored within the following Folder → {folderGen}')
-    baseVMS.to_csv(os.path.join(pathData, folderGen, f'BaseVMS_G{folderGen.split("_")[1]}.csv'))
-    taskVM.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_G{folderGen.split("_")[1]}.csv'))
-    taskVM_Dummy.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_DUMMY_G{folderGen.split("_")[1]}.csv'))
-    taskVM_Transp.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_TRANSPOSE_G{folderGen.split("_")[1]}.csv'))
+    if saveInformation:
+        # Save DATAFRAMES as CSV Files
+        pathData = 'data/GENERATIONS'
+        os.makedirs(pathData, exist_ok=True)
+        lsFolders = os.listdir(pathData)
+        folderGen = f'Generation_{int(max(list(map(lambda folderN : int(folderN.split("_")[1]), lsFolders)))) + 1}' if lsFolders else 'Generation_1'
+        os.makedirs(os.path.join(pathData, folderGen), exist_ok=True)
+        
+        print(f'Data are stored within the following Folder → {folderGen}')
+        baseVMS.to_csv(os.path.join(pathData, folderGen, f'BaseVMS_G{folderGen.split("_")[1]}.csv'))
+        taskVM.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_G{folderGen.split("_")[1]}.csv'))
+        taskVM_Dummy.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_DUMMY_G{folderGen.split("_")[1]}.csv'))
+        taskVM_Transp.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_TRANSPOSE_G{folderGen.split("_")[1]}.csv'))
 
     return baseVMS, taskVM, taskVM_Dummy, taskVM_Transp
 
