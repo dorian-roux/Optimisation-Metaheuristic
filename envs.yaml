@@ -1,0 +1,11 @@
+name: py38_opti
+channels:
+  - defaults
+dependencies:
+  - python=3.8.15
+  - pip
+  - pip:
+    # works for regular pip packages
+    - pandas
+    - numpy
+    - matplotlib

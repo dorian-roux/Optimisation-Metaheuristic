@@ -13,14 +13,12 @@ import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning) 
 
 # -- Script based Packages --
-from utils.data_generation import setEnvironment_FOG, setEnvironment_CLOUD, setEnvironment_IoT_n_TASKS
-# from data_generation import setEnvironment_FOG, setEnvironment_CLOUD, setEnvironment_IoT_n_TASKS
-
+from generateData import setEnvironment_FOG, setEnvironment_CLOUD, setEnvironment_IoT_n_TASKS
 
 # - FUNCTIONS - 
 
 # -- Merge FOG/CLOUD VMS --
-def setBaseVMS(FOG_nNodes = 5, CLOUD_nNodes = 2, FOG_rDist = ((0,50), (0,50)), CLOUD_rDist = ((100, 500), (100, 500)), FOG_rVMS = (2, 6), CLOUD_rVMS = (1,3)):
+def setBaseVMS(FOG_nNodes = 5, CLOUD_nNodes = 3, FOG_rDist = ((0,50), (0,50)), CLOUD_rDist = ((100, 500), (100, 500)), FOG_rVMS = (2, 6), CLOUD_rVMS = (2,4), saveInformation = False):
     base_FOG, base_FOG_VMS = setEnvironment_FOG(FOG_nNodes, FOG_rDist, FOG_rVMS)
     base_CLOUD, base_CLOUD_VMS = setEnvironment_CLOUD(CLOUD_nNodes, CLOUD_rDist, CLOUD_rVMS)  
     base_FOG_VMS = base_FOG.merge(base_FOG_VMS, on='NODE_ID')
@@ -29,10 +27,11 @@ def setBaseVMS(FOG_nNodes = 5, CLOUD_nNodes = 2, FOG_rDist = ((0,50), (0,50)), C
     baseVMS['QUEUE_TASK'] = 0
     baseVMS['QUEUE_TIME'] = 0
     
-    # Save DATAFRAME as a CSV File
-    pathData = 'data'
-    os.makedirs(pathData, exist_ok=True)
-    baseVMS.to_csv(os.path.join(pathData, 'Bases-VMS.csv'), index=0)
+    if saveInformation:
+        # Save DATAFRAME as a CSV File
+        pathData = 'data'
+        os.makedirs(pathData, exist_ok=True)
+        baseVMS.to_csv(os.path.join(pathData, 'Bases-VMS.csv'), index=0)
     return baseVMS
 
 
@@ -115,75 +114,9 @@ def computeCLOUD_EC(FOG_TrmsnTime, CLOUD_TrmsnTime, TaskInfo, best_FOG_CLOUD):
     return FOG_Energy_TrsmsnPhase + CLOUD_Energy_TrsmsnPhase + CLOUD_Energy_PrsngPhase
 
 
-
-# -- Prepare Offloading - V1
-def prepareOffloading_V1(n_IoTs = 20, FOG_nNodes = 5, CLOUD_nNodes = 2, IoT_rDist=((0,50), (0,50)), FOG_rDist = ((0,50), (0,50)), CLOUD_rDist = ((100, 500), (100, 500)), FOG_rVMS = (2, 6), CLOUD_rVMS = (1,3)):
-    taskVM, taskVM_Dummy = pd.DataFrame(), pd.DataFrame()
-    baseVMS = setBaseVMS(FOG_nNodes, CLOUD_nNodes, FOG_rDist, CLOUD_rDist, FOG_rVMS, CLOUD_rVMS)
-    baseIoT, baseTasks = setEnvironment_IoT_n_TASKS(n_IoTs, IoT_rDist)
-    baseIoT = baseIoT.merge(baseTasks, on='IoT_ID')
-        
-    for _, T in baseIoT.iterrows():
-        
-        # Compute LOCALLY (future)
-        Local_energy_consumption = (T.N_INSTRUCTIONS / T.IoT_MIpS) * T.POWER * 1000
-        Local_PowerRespect = True if (Local_energy_consumption/3600 < T.POWER) else False
-        Local_ExecTimeRespect = True if (T.N_INSTRUCTIONS / T.IoT_MIpS) < 10 else False 
-        if Local_PowerRespect and Local_ExecTimeRespect:
-            taskVM = pd.concat([taskVM, pd.DataFrame({T.TASK_ID: ['LOCAL', 0, Local_energy_consumption]})], axis=1)
-            taskVM_Dummy = pd.concat([taskVM_Dummy, pd.DataFrame({T.TASK_ID : -1}, index=[0])], axis=1)
-            continue
-        
-        # Compute LATENCY
-        best_FOG_VM, lowest_FOG_latency, FOG_TrmsnTime = compute_FOG_BestLatency(pd.Series(T), baseVMS)
-        best_CLOUD_VM, lowest_CLOUD_latency, CLOUD_TrmsnTime = compute_CLOUD_BestLatency(pd.Series(T), baseVMS)
-        
-        # Compute FOG - ENERGY CONSUMPTION
-        FOG_energy_consumption = computeFOG_EC(FOG_TrmsnTime, T, best_FOG_VM)
-        FOG_PowerRespect = True if (FOG_energy_consumption/3600 < best_FOG_VM.POWER) else False
-        FOG_ExecTimeRespect = True if (T.N_INSTRUCTIONS / best_FOG_VM.VM_POWER_CAPACITY) < 10 else False 
-        if FOG_PowerRespect and FOG_ExecTimeRespect:
-            asctIndex = baseVMS[baseVMS.VM_ID == best_FOG_VM.VM_ID].index[0]
-            baseVMS.loc[asctIndex, 'QUEUE_TASK'] = int(best_FOG_VM['QUEUE_TASK'] + 1)
-            baseVMS.loc[asctIndex, 'QUEUE_TIME'] = best_FOG_VM['QUEUE_TIME'] + (T.N_INSTRUCTIONS / best_FOG_VM.VM_POWER_CAPACITY)
-            taskVM = pd.concat([taskVM, pd.DataFrame({T.TASK_ID: [best_FOG_VM.VM_ID, lowest_FOG_latency, FOG_energy_consumption]})], axis=1)
-            taskVM_Dummy = pd.concat([taskVM_Dummy, pd.DataFrame({T.TASK_ID : 0}, index=[0])], axis=1)
-            continue
-
-        # Compute FOG - ENERGY CONSUMPTION
-        CLOUD_energy_consumption = computeCLOUD_EC(FOG_TrmsnTime, CLOUD_TrmsnTime, T, best_CLOUD_VM)
-
-        asctIndex = baseVMS[baseVMS.VM_ID == best_CLOUD_VM.VM_ID].index[0]
-        baseVMS.loc[asctIndex, 'QUEUE_TASK'] = int(best_CLOUD_VM['QUEUE_TASK'] + 1)
-        baseVMS.loc[asctIndex, 'QUEUE_TIME'] = best_CLOUD_VM['QUEUE_TIME'] + (T.N_INSTRUCTIONS / best_CLOUD_VM.VM_POWER_CAPACITY)
-        taskVM = pd.concat([taskVM, pd.DataFrame({T.TASK_ID: [best_CLOUD_VM.VM_ID, lowest_CLOUD_latency, CLOUD_energy_consumption]})], axis=1)
-        taskVM_Dummy = pd.concat([taskVM_Dummy, pd.DataFrame({T.TASK_ID : 1}, index=[0])], axis=1)
-    
-    
-    # Make Transpose
-    taskVM_Transp = taskVM.transpose()
-    taskVM_Transp = taskVM_Transp.reset_index()
-    taskVM_Transp = taskVM_Transp.rename(columns={'index':'TASK', 0:'VM', 1:'F1', 2:'F2'})
-
-
-    # Save DATAFRAMES as CSV Files
-    pathData = 'data/GENERATIONS'
-    os.makedirs(pathData, exist_ok=True)
-    lsFolders = os.listdir(pathData)
-    folderGen = f'Generation_{int(max(list(map(lambda folderN : int(folderN.split("_")[1]), lsFolders)))) + 1}' if lsFolders else 'Generation_1'
-    os.makedirs(os.path.join(pathData, folderGen), exist_ok=True)
-    
-    print(f'Data are stored within the following Folder → {folderGen}')
-    baseVMS.to_csv(os.path.join(pathData, folderGen, f'BaseVMS_G{folderGen.split("_")[1]}.csv'))
-    taskVM.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_G{folderGen.split("_")[1]}.csv'))
-    taskVM_Dummy.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_DUMMY_G{folderGen.split("_")[1]}.csv'))
-    taskVM_Transp.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_TRANSPOSE_G{folderGen.split("_")[1]}.csv'))
-
-    return baseVMS, taskVM, taskVM_Dummy, taskVM_Transp
-        
-        
+  
 # -- Prepare Offloading - V2
-def prepareOffloading_V2(n_IoTs = 20, FOG_nNodes = 5, CLOUD_nNodes = 2, IoT_rDist=((0,50), (0,50)), FOG_rDist = ((0,50), (0,50)), CLOUD_rDist = ((100, 500), (100, 500)), FOG_rVMS = (2, 6), CLOUD_rVMS = (1,3), saveInformation=False):
+def prepareOffloading_V2(n_IoTs = 20, FOG_nNodes = 5, CLOUD_nNodes = 2, IoT_rDist=((0,50), (0,50)), FOG_rDist = ((0,50), (0,50)), CLOUD_rDist = ((100, 500), (100, 500)), FOG_rVMS = (2, 6), CLOUD_rVMS = (2,4), saveInformation=False):
     taskVM, taskVM_Dummy = pd.DataFrame(), pd.DataFrame()
     
     baseVMS = setBaseVMS(FOG_nNodes, CLOUD_nNodes, FOG_rDist, CLOUD_rDist, FOG_rVMS, CLOUD_rVMS)
@@ -220,7 +153,7 @@ def prepareOffloading_V2(n_IoTs = 20, FOG_nNodes = 5, CLOUD_nNodes = 2, IoT_rDis
                 asctIndex = baseVMS[baseVMS.VM_ID == best_FOG_VM.VM_ID].index[0]
                 baseIoT.loc[taskIdx, 'TASK_ASSIGNED'] = True
                 baseVMS.loc[asctIndex, 'QUEUE_TASK'] = int(best_FOG_VM['QUEUE_TASK'] + 1)
-                baseVMS.loc[asctIndex, 'QUEUE_TIME'] = best_FOG_VM['QUEUE_TIME'] + (taskInf.N_INSTRUCTIONS / best_FOG_VM.VM_POWER_CAPACITY)
+                baseVMS.loc[asctIndex, 'QUEUE_TIME'] = float(best_FOG_VM['QUEUE_TIME'] + (taskInf.N_INSTRUCTIONS / best_FOG_VM.VM_POWER_CAPACITY))
                 baseVMS.loc[asctIndex, 'MEMORY_REMAINING'] = best_FOG_VM['MEMORY_REMAINING'] - (taskInf.FILE_SIZE)/1000
                 taskVM = pd.concat([taskVM, pd.DataFrame({taskInf.TASK_ID: [best_FOG_VM.VM_ID, lowest_FOG_latency, FOG_energy_consumption]})], axis=1)
                 taskVM_Dummy = pd.concat([taskVM_Dummy, pd.DataFrame({taskInf.TASK_ID : 0}, index=[0])], axis=1)
@@ -242,13 +175,17 @@ def prepareOffloading_V2(n_IoTs = 20, FOG_nNodes = 5, CLOUD_nNodes = 2, IoT_rDis
         asctIndex = baseVMS[baseVMS.VM_ID == best_CLOUD_VM.VM_ID].index[0]
         baseIoT.loc[taskIdx, 'TASK_ASSIGNED'] = True
         baseVMS.loc[asctIndex, 'QUEUE_TASK'] = int(best_CLOUD_VM['QUEUE_TASK'] + 1)
-        baseVMS.loc[asctIndex, 'QUEUE_TIME'] = best_CLOUD_VM['QUEUE_TIME'] + (taskInf.N_INSTRUCTIONS / best_CLOUD_VM.VM_POWER_CAPACITY)
+        baseVMS.loc[asctIndex, 'QUEUE_TIME'] = float(best_CLOUD_VM['QUEUE_TIME'] + (taskInf.N_INSTRUCTIONS / best_CLOUD_VM.VM_POWER_CAPACITY))
         taskVM = pd.concat([taskVM, pd.DataFrame({taskInf.TASK_ID: [best_CLOUD_VM.VM_ID, lowest_CLOUD_latency, CLOUD_energy_consumption]})], axis=1)
         taskVM_Dummy = pd.concat([taskVM_Dummy, pd.DataFrame({taskInf.TASK_ID : 1}, index=[0])], axis=1)
         taskIdx += 1 
         subBaseVMS = baseVMS.copy()
     
     
+    # Modify Dummies
+    taskVM_Dummy = taskVM_Dummy.loc[:, ~(taskVM_Dummy == -1).any()]
+    taskVM = taskVM[list(taskVM_Dummy)]
+
     # Make Transpose
     taskVM_Transp = taskVM.transpose()
     taskVM_Transp = taskVM_Transp.reset_index()
@@ -268,12 +205,12 @@ def prepareOffloading_V2(n_IoTs = 20, FOG_nNodes = 5, CLOUD_nNodes = 2, IoT_rDis
         taskVM_Dummy.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_DUMMY_G{folderGen.split("_")[1]}.csv'))
         taskVM_Transp.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_TRANSPOSE_G{folderGen.split("_")[1]}.csv'))
 
-    return baseVMS, taskVM, taskVM_Dummy, taskVM_Transp
+    return baseVMS, taskVM, taskVM_Dummy, taskVM_Transp, baseIoT
 
 
 
 # -- Prepare Offloading - V3
-def prepareOffloading_V3(n_IoTs = 20, FOG_nNodes = 5, CLOUD_nNodes = 2, IoT_rDist=((0,50), (0,50)), FOG_rDist = ((0,50), (0,50)), CLOUD_rDist = ((100, 500), (100, 500)), FOG_rVMS = (2, 6), CLOUD_rVMS = (1,3)):
+def prepareOffloading_V3(n_IoTs = 20, FOG_nNodes = 5, CLOUD_nNodes = 3, IoT_rDist=((0,50), (0,50)), FOG_rDist = ((0,50), (0,50)), CLOUD_rDist = ((100, 500), (100, 500)), FOG_rVMS = (2, 6), CLOUD_rVMS = (2,4), saveInformation=False):
     taskVM, taskVM_Dummy = pd.DataFrame(), pd.DataFrame()
     
     baseVMS = setBaseVMS(FOG_nNodes, CLOUD_nNodes, FOG_rDist, CLOUD_rDist, FOG_rVMS, CLOUD_rVMS)
@@ -377,18 +314,20 @@ def prepareOffloading_V3(n_IoTs = 20, FOG_nNodes = 5, CLOUD_nNodes = 2, IoT_rDis
     taskVM_Transp = taskVM_Transp.rename(columns={'index':'TASK', 0:'VM', 1:'F1', 2:'F2'})
 
 
-    # Save DATAFRAMES as CSV Files
-    pathData = 'data/GENERATIONS'
-    os.makedirs(pathData, exist_ok=True)
-    lsFolders = os.listdir(pathData)
-    folderGen = f'Generation_{int(max(list(map(lambda folderN : int(folderN.split("_")[1]), lsFolders)))) + 1}' if lsFolders else 'Generation_1'
-    os.makedirs(os.path.join(pathData, folderGen), exist_ok=True)
-    
-    print(f'Data are stored within the following Folder → {folderGen}')
-    baseVMS.to_csv(os.path.join(pathData, folderGen, f'BaseVMS_G{folderGen.split("_")[1]}.csv'))
-    taskVM.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_G{folderGen.split("_")[1]}.csv'))
-    taskVM_Dummy.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_DUMMY_G{folderGen.split("_")[1]}.csv'))
-    taskVM_Transp.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_TRANSPOSE_G{folderGen.split("_")[1]}.csv'))
+
+    if saveInformation:
+        # Save DATAFRAMES as CSV Files
+        pathData = 'data/GENERATIONS'
+        os.makedirs(pathData, exist_ok=True)
+        lsFolders = os.listdir(pathData)
+        folderGen = f'Generation_{int(max(list(map(lambda folderN : int(folderN.split("_")[1]), lsFolders)))) + 1}' if lsFolders else 'Generation_1'
+        os.makedirs(os.path.join(pathData, folderGen), exist_ok=True)
+        
+        print(f'Data are stored within the following Folder → {folderGen}')
+        baseVMS.to_csv(os.path.join(pathData, folderGen, f'BaseVMS_G{folderGen.split("_")[1]}.csv'))
+        taskVM.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_G{folderGen.split("_")[1]}.csv'))
+        taskVM_Dummy.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_DUMMY_G{folderGen.split("_")[1]}.csv'))
+        taskVM_Transp.to_csv(os.path.join(pathData, folderGen, f'TASKS_VMS_TRANSPOSE_G{folderGen.split("_")[1]}.csv'))
 
     return baseVMS, taskVM, taskVM_Dummy, taskVM_Transp
 
